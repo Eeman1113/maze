@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!-- <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -471,6 +471,543 @@
         }
         
         function showThemedAlert(message) {
+            alert("Hark, adventurer!\n\n" + message);
+        }
+
+        disableControls(); 
+        startExplorationBtn.disabled = false; 
+
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                if (pdfDoc) { 
+                    console.log("Window resized, re-rendering current room view.");
+                    renderCurrentRoomView(); 
+                }
+            }, 250); 
+        });
+        
+        clearAllCanvases();
+
+    </script>
+</body>
+</html>
+ -->
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Maze PDF Viewer - Dungeon Edition</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js"></script>
+    <style>
+        body {
+            font-family: 'Georgia', 'Times New Roman', Times, serif; /* More thematic font */
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a; /* Dark dungeon wall */
+            color: #c5c5c5; /* Dusty text */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box; /* Ensures padding/border don't add to overall width/height */
+        }
+
+        .container {
+            width: 95%;
+            max-width: 1400px; /* Increased max-width for larger screens */
+            margin-top: 20px;
+            margin-bottom: 20px; /* Added margin at the bottom */
+            background-color: #2b2b2b; /* Dark stone container */
+            padding: 25px; /* Default padding for larger screens */
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.7), inset 0 0 10px rgba(0,0,0,0.5); /* Enhanced shadow */
+            border: 1px solid #444; /* Slightly darker border */
+            box-sizing: border-box;
+        }
+
+        h1 {
+            text-align: center;
+            color: #d4ac0d; /* Old gold / treasure */
+            margin-bottom: 25px;
+            font-size: 2.2em; /* Slightly adjusted for better balance */
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.7);
+        }
+
+        #controls {
+            display: flex;
+            flex-wrap: wrap; /* Allow controls to wrap on smaller screens */
+            justify-content: center;
+            align-items: center;
+            gap: 10px; /* Default gap, adjusted in media query if needed */
+            margin-bottom: 30px;
+            padding: 15px; /* Slightly reduced padding */
+            background-color: #1f1f1f; /* Darker control panel */
+            border-radius: 8px;
+            border: 1px solid #383838;
+            box-shadow: inset 0 0 8px rgba(0,0,0,0.6);
+        }
+
+        #controls label, #controls input, #controls button {
+            margin: 5px;
+            padding: 10px 12px; /* Adjusted padding for better fit on mobile */
+            border-radius: 6px;
+            font-size: 0.95em; /* Adjusted font size */
+            border: 1px solid #555; /* Darker borders */
+            background-color: #333; /* Dark input background */
+            color: #c5c5c5;
+        }
+        
+        #controls input[type="number"] {
+            width: 70px; /* Slightly reduced width */
+            text-align: center;
+        }
+
+        #controls button {
+            background-color: #78281f; /* Deep red / bloodstone */
+            color: #f0e68c; /* Khaki / parchment text */
+            border: 1px solid #501b15; /* Border matching button color */
+            cursor: pointer;
+            transition: background-color 0.3s ease, box-shadow 0.3s ease;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+        }
+
+        #controls button:hover {
+            background-color: #922b21; /* Brighter red on hover */
+            box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+        }
+        #controls button:disabled {
+            background-color: #4a4a4a; /* Darker disabled state */
+            color: #888;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        #roomInfo {
+            text-align: center;
+            margin-bottom: 25px;
+            font-size: 1.1em; /* Adjusted font size */
+            color: #b0a080; /* Aged parchment color */
+        }
+
+        #pdfViewerContainer {
+            display: flex;
+            justify-content: center; /* Center canvases */
+            align-items: flex-start; /* Align top of canvases */
+            gap: 20px; /* Default gap */
+            flex-wrap: wrap; /* Allow canvases to wrap on smaller screens */
+            margin-top: 20px;
+            width: 100%;
+        }
+
+        .canvas-wrapper {
+            border: 2px solid #403020; /* Dark wood/stone border */
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5), inset 0 0 5px rgba(0,0,0,0.3);
+            background-color: #252018; /* Very dark canvas background */
+            border-radius: 6px;
+            padding: 8px; /* Padding around the canvas */
+            flex: 1 1 45%; /* Allow flex grow/shrink, base 45% width */
+            max-width: calc(50% - 10px); /* Adjusted for 20px gap */
+            min-width: 280px; /* Slightly reduced min-width for more flexibility */
+            box-sizing: border-box; 
+        }
+        
+        .canvas-wrapper canvas {
+            display: block; /* Remove extra space below canvas */
+            width: 100%;   /* Canvas fills its wrapper */
+            height: auto;  /* Maintain aspect ratio */
+            border-radius: 4px; /* Slightly rounded corners for the canvas itself */
+            border: 1px solid #555; /* Inner border for canvas */
+        }
+
+        .page-label {
+            text-align: center;
+            font-size: 0.9em; /* Adjusted font size */
+            color: #a09070; /* Muted gold/parchment */
+            margin-top: 8px; 
+            padding-bottom: 4px; 
+        }
+        
+        #loadingIndicator, #errorIndicator {
+            text-align: center;
+            font-size: 1.2em; /* Adjusted font size */
+            padding: 20px;
+            display: none; 
+        }
+        #loadingIndicator { color: #d4ac0d; } 
+        #errorIndicator { color: #c0392b; } 
+
+        /* Responsive adjustments for phone compatibility */
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px; /* Reduced padding on smaller screens */
+                margin-top: 10px;
+                margin-bottom: 10px;
+            }
+            h1 {
+                font-size: 1.8em; /* Further reduce h1 font size on mobile */
+            }
+            #controls {
+                flex-direction: column; /* Stack controls vertically */
+                gap: 10px;
+                padding: 10px;
+            }
+             #controls label, #controls input, #controls button {
+                width: 90%; /* Make controls take more width */
+                max-width: 300px; /* Max width for controls */
+                box-sizing: border-box; /* Ensure padding doesn't make them overflow */
+                text-align: center;
+            }
+            #controls input[type="number"] {
+                 width: 90%; /* Make input responsive */
+            }
+            .canvas-wrapper {
+                flex-basis: 100%; /* Full width for canvas wrappers on small screens */
+                max-width: 100%;
+                min-width: unset; /* Remove min-width on mobile to prevent overflow */
+                margin-bottom: 15px; /* Space between stacked canvases */
+            }
+            #pdfViewerContainer {
+                gap: 15px; /* Reduced gap for stacked canvases */
+            }
+            #roomInfo {
+                font-size: 1em;
+            }
+            .page-label {
+                font-size: 0.85em;
+            }
+        }
+         @media (max-width: 480px) {
+            h1 {
+                font-size: 1.6em;
+            }
+            #controls label, #controls input, #controls button {
+                font-size: 0.9em;
+                padding: 8px 10px;
+            }
+             #controls input[type="number"] {
+                width: 100%; /* Full width within its parent constraints */
+            }
+            .container {
+                padding: 10px;
+            }
+             .canvas-wrapper {
+                padding: 5px; /* Reduce padding in canvas wrapper */
+            }
+            .page-label {
+                font-size: 0.8em;
+                 margin-top: 5px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>The Maze Beckons...</h1>
+
+        <div id="controls">
+            <button id="startExplorationBtn">Reload Maze</button> 
+            
+            <label for="roomNumberInput">Go to Room (1-45):</label>
+            <input type="number" id="roomNumberInput" min="1" max="45" value="1"> 
+            <button id="goToRoomBtn" disabled>Go</button>
+            
+            <button id="prevRoomBtn" disabled>&laquo; Prev Room</button>
+            <button id="nextRoomBtn" disabled>Next Room &raquo;</button>
+        </div>
+
+        <div id="roomInfo">
+            Current Room: <span id="currentRoomDisplay">-</span> | PDF Pages: <span id="currentPageDisplay">-</span>
+        </div>
+        
+        <div id="loadingIndicator">Delving into the depths...</div>
+        <div id="errorIndicator"></div>
+
+        <div id="pdfViewerContainer">
+            <div class="canvas-wrapper" id="leftPageWrapper">
+                <canvas id="pdfCanvasLeft"></canvas>
+                <div class="page-label" id="leftPageLabel">Left Parchment</div>
+            </div>
+            <div class="canvas-wrapper" id="rightPageWrapper">
+                <canvas id="pdfCanvasRight"></canvas>
+                <div class="page-label" id="rightPageLabel">Right Parchment</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Setup PDF.js worker
+        if (window.pdfjsLib) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+        } else {
+            console.error("PDF.js library not loaded.");
+            const errorDiv = document.getElementById('errorIndicator');
+            if (errorDiv) {
+                errorDiv.textContent = 'Error: PDF.js library not loaded. Check your internet connection and the script URL.';
+                errorDiv.style.display = 'block';
+            }
+        }
+
+        // --- Global variables ---
+        let pdfDoc = null;
+        let currentRoom = 1; // Default starting room, will show pages 8 & 9
+        let totalPdfPages = 0;
+        const MIN_ROOM = 1;
+        const MAX_ROOM = 45; 
+        const PDF_PATH = './maze.pdf'; 
+
+        // --- DOM Elements ---
+        const startExplorationBtn = document.getElementById('startExplorationBtn');
+        const roomNumberInput = document.getElementById('roomNumberInput');
+        const goToRoomBtn = document.getElementById('goToRoomBtn');
+        const prevRoomBtn = document.getElementById('prevRoomBtn');
+        const nextRoomBtn = document.getElementById('nextRoomBtn');
+        
+        const currentRoomDisplay = document.getElementById('currentRoomDisplay');
+        const currentPageDisplay = document.getElementById('currentPageDisplay');
+        
+        const leftCanvas = document.getElementById('pdfCanvasLeft');
+        const rightCanvas = document.getElementById('pdfCanvasRight');
+        const leftCtx = leftCanvas.getContext('2d');
+        const rightCtx = rightCanvas.getContext('2d');
+        const leftPageLabel = document.getElementById('leftPageLabel');
+        const rightPageLabel = document.getElementById('rightPageLabel');
+
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const errorIndicator = document.getElementById('errorIndicator');
+        
+        /**
+         * Loads the PDF document from the specified PDF_PATH.
+         * Initializes the viewer to the currentRoom.
+         */
+        function loadAndProcessPdf() {
+            errorIndicator.style.display = 'none';
+            loadingIndicator.style.display = 'block';
+            startExplorationBtn.disabled = true; 
+            clearAllCanvases(); 
+
+            const loadingTask = pdfjsLib.getDocument(PDF_PATH);
+            loadingTask.promise.then(doc => {
+                pdfDoc = doc;
+                totalPdfPages = doc.numPages;
+                currentRoom = parseInt(roomNumberInput.value) || currentRoom; 
+                roomNumberInput.value = currentRoom; 
+                renderCurrentRoomView(); 
+                enableControls(); 
+                loadingIndicator.style.display = 'none';
+            }).catch(err => {
+                console.error('Error loading PDF from path:', err);
+                errorIndicator.innerHTML = `Failed to load Maze from <code>${PDF_PATH}</code>. <br>Ensure the PDF is in the same directory as this HTML file, or check browser console for security errors (CORS). <br>Details: ${err.message}`;
+                errorIndicator.style.display = 'block';
+                loadingIndicator.style.display = 'none';
+                disableControls(); 
+                startExplorationBtn.disabled = false; 
+                pdfDoc = null; 
+            });
+        }
+
+        startExplorationBtn.addEventListener('click', loadAndProcessPdf);
+        window.addEventListener('DOMContentLoaded', loadAndProcessPdf); 
+
+        /**
+         * Maps a room number to the PDF page number that should appear on the LEFT canvas.
+         * @param {number} roomNum - The room number.
+         * @returns {number} The PDF page number for the left canvas.
+         */
+        function mapRoomToPage(roomNum) {
+            return (2 * parseInt(roomNum)) + 6;
+        }
+
+        /**
+         * Renders the appropriate pages for the current room onto the canvases.
+         */
+        async function renderCurrentRoomView() {
+            if (!pdfDoc) {
+                console.warn("renderCurrentRoomView called but pdfDoc is null.");
+                return;
+            }
+            loadingIndicator.style.display = 'block';
+
+            const leftPageNum = mapRoomToPage(currentRoom);
+            const rightPageNum = leftPageNum + 1;
+
+            updateRoomInfo(leftPageNum, rightPageNum); 
+            validateRoomButtons(); 
+            
+            try {
+                await Promise.all([
+                    renderPage(leftPageNum, leftCanvas, leftCtx, leftPageLabel, "Left"),
+                    renderPage(rightPageNum, rightCanvas, rightCtx, rightPageLabel, "Right")
+                ]);
+            } catch (err) {
+                console.error("Error rendering pages:", err);
+                errorIndicator.textContent = 'Error rendering pages. Some pages might be missing or invalid.';
+                errorIndicator.style.display = 'block';
+            } finally {
+                loadingIndicator.style.display = 'none';
+            }
+        }
+        
+        /**
+         * Renders a single PDF page onto a given canvas.
+         * @param {number} pageNum - The PDF page number to render.
+         * @param {HTMLCanvasElement} canvas - The canvas element to render on.
+         * @param {CanvasRenderingContext2D} ctx - The 2D rendering context of the canvas.
+         * @param {HTMLElement} labelElement - The HTML element to display the page number/label.
+         * @param {string} sideLabel - "Left" or "Right" to update label.
+         */
+        async function renderPage(pageNum, canvas, ctx, labelElement, sideLabel) {
+            const wrapper = canvas.parentElement;
+            // Ensure canvas has a base size for calculations if not yet rendered or if wrapper is not yet sized
+            // This initial sizing is mostly a fallback; actual rendering size is determined by PDF page scale
+            if (canvas.width === 0 || canvas.height === 0 || !canvas.style.width) { // Check if style width is also not set
+                 if (wrapper && wrapper.clientWidth > 0) {
+                    canvas.width = wrapper.clientWidth; // Set drawing buffer size
+                    canvas.height = canvas.width * 1.414; // Approximate A4 aspect ratio for buffer
+                } else { 
+                    canvas.width = 280; // Fallback drawing buffer size
+                    canvas.height = 395; // Fallback drawing buffer size
+                }
+            }
+
+
+            if (pageNum <= 0 || pageNum > totalPdfPages) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height); 
+                labelElement.textContent = `${sideLabel} Page ${pageNum} (Invalid)`;
+                ctx.fillStyle = "#1a1a1a"; 
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = "#777";
+                ctx.font = "bold 16px 'Georgia', serif"; // Slightly smaller for potentially smaller canvas
+                ctx.textAlign = "center";
+                ctx.fillText(pageNum > totalPdfPages ? "End of the Path" : "Lost Passage", canvas.width / 2, canvas.height / 2);
+                return; 
+            }
+
+            try {
+                const page = await pdfDoc.getPage(pageNum);
+                
+                let desiredWidth = wrapper.clientWidth - (parseInt(getComputedStyle(wrapper).paddingLeft) || 0) - (parseInt(getComputedStyle(wrapper).paddingRight) || 0);
+                if (desiredWidth <=0) desiredWidth = 280; // Fallback if wrapper has no width yet
+
+                const viewportInitial = page.getViewport({ scale: 1.0 });
+                const scale = desiredWidth / viewportInitial.width;
+                const viewport = page.getViewport({ scale: scale });
+
+                canvas.height = viewport.height; // Set canvas drawing buffer size
+                canvas.width = viewport.width;  // Set canvas drawing buffer size
+                
+                // The canvas CSS size is already 100% of its wrapper, so it will scale visually.
+                // No need to set canvas.style.width/height here as it's handled by CSS.
+
+                const renderContext = {
+                    canvasContext: ctx,
+                    viewport: viewport
+                };
+                await page.render(renderContext).promise;
+                labelElement.textContent = `Scroll ${pageNum} (${sideLabel})`;
+            } catch (error) {
+                console.error(`Error rendering page ${pageNum} (${sideLabel}):`, error);
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                labelElement.textContent = `Corrupted Scroll ${pageNum} (${sideLabel})`;
+                ctx.fillStyle = "#4a1e1a"; 
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = "#c5c5c5";
+                ctx.font = "bold 16px 'Georgia', serif";
+                ctx.textAlign = "center";
+                ctx.fillText(`Faded Scroll ${pageNum}`, canvas.width / 2, canvas.height / 2);
+            }
+        }
+        
+        function clearAllCanvases() {
+            const canvases = [leftCanvas, rightCanvas];
+            const contexts = [leftCtx, rightCtx];
+
+            canvases.forEach((canvas, index) => {
+                const ctx = contexts[index];
+                const wrapper = canvas.parentElement;
+                 if (wrapper && wrapper.clientWidth > 0) {
+                    canvas.width = wrapper.clientWidth; 
+                    canvas.height = canvas.width * 1.414; 
+                } else { 
+                    canvas.width = 280; // Fallback for initial clear
+                    canvas.height = 395;
+                }
+                ctx.fillStyle = "#1a1a1a"; 
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            });
+            
+            leftPageLabel.textContent = "Left Parchment";
+            rightPageLabel.textContent = "Right Parchment";
+            currentRoomDisplay.textContent = "-";
+            currentPageDisplay.textContent = "-";
+        }
+
+        goToRoomBtn.addEventListener('click', () => {
+            const targetRoom = parseInt(roomNumberInput.value);
+            if (targetRoom >= MIN_ROOM && targetRoom <= MAX_ROOM) {
+                currentRoom = targetRoom;
+                renderCurrentRoomView();
+            } else {
+                showThemedAlert(`Enter a passage number between ${MIN_ROOM} and ${MAX_ROOM}.`);
+            }
+        });
+
+        prevRoomBtn.addEventListener('click', () => {
+            if (currentRoom > MIN_ROOM) {
+                currentRoom--;
+                roomNumberInput.value = currentRoom; 
+                renderCurrentRoomView();
+            }
+        });
+
+        nextRoomBtn.addEventListener('click', () => {
+            if (currentRoom < MAX_ROOM) {
+                currentRoom++;
+                roomNumberInput.value = currentRoom; 
+                renderCurrentRoomView();
+            }
+        });
+        
+        function updateRoomInfo(leftPageNum, rightPageNum) {
+            currentRoomDisplay.textContent = currentRoom;
+            if (leftPageNum && rightPageNum) {
+                 currentPageDisplay.textContent = `Left: ${leftPageNum}, Right: ${rightPageNum}`;
+            } else { 
+                 currentPageDisplay.textContent = "-";
+            }
+        }
+
+        function enableControls() {
+            goToRoomBtn.disabled = false;
+            roomNumberInput.disabled = false;
+            validateRoomButtons(); 
+        }
+
+        function disableControls() {
+            goToRoomBtn.disabled = true;
+            prevRoomBtn.disabled = true;
+            nextRoomBtn.disabled = true;
+            roomNumberInput.disabled = true;
+        }
+        
+        function validateRoomButtons() {
+            if (!pdfDoc) { 
+                disableControls(); 
+                startExplorationBtn.disabled = false; 
+                return;
+            }
+            prevRoomBtn.disabled = (currentRoom <= MIN_ROOM);
+            nextRoomBtn.disabled = (currentRoom >= MAX_ROOM);
+        }
+        
+        function showThemedAlert(message) {
+            // Consider replacing with a custom modal for better theming on mobile
             alert("Hark, adventurer!\n\n" + message);
         }
 
