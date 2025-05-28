@@ -122,8 +122,8 @@
         
         .canvas-wrapper canvas {
             display: block; /* Remove extra space below canvas */
-            width: 100%;   /* Canvas fills its wrapper */
-            height: auto;  /* Maintain aspect ratio */
+            width: 100%;    /* Canvas fills its wrapper */
+            height: auto;   /* Maintain aspect ratio */
             border-radius: 4px; /* Slightly rounded corners for the canvas itself */
             border: 1px solid #555; /* Inner border for canvas */
         }
@@ -258,11 +258,13 @@
 
         // --- Global variables ---
         let pdfDoc = null;
-        let currentRoom = 1; // Default starting room, will show pages 8 & 9
+        let currentRoom = 1; // Default starting room
         let totalPdfPages = 0;
         const MIN_ROOM = 1;
         const MAX_ROOM = 45; 
         const PDF_PATH = './maze.pdf'; 
+        const PROGRESS_KEY_LS = 'mazeCurrentRoom_LS'; // Key for Local Storage
+        const PROGRESS_KEY_COOKIE = 'mazeCurrentRoom_CK'; // Key for Cookie
 
         // --- DOM Elements ---
         const startExplorationBtn = document.getElementById('startExplorationBtn');
@@ -283,7 +285,76 @@
 
         const loadingIndicator = document.getElementById('loadingIndicator');
         const errorIndicator = document.getElementById('errorIndicator');
+
+        // --- Cookie Helper Functions ---
+        function setCookie(name, value, days) {
+            let expires = "";
+            if (days) {
+                const date = new Date();
+                date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+                expires = "; expires=" + date.toUTCString();
+            }
+            document.cookie = name + "=" + (value || "") + expires + "; path=/; SameSite=Lax";
+        }
+
+        function getCookie(name) {
+            const nameEQ = name + "=";
+            const ca = document.cookie.split(';');
+            for (let i = 0; i < ca.length; i++) {
+                let c = ca[i];
+                while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+                if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+            }
+            return null;
+        }
+
+        // --- Progress Saving/Loading ---
+        function saveProgress(room) {
+            try {
+                localStorage.setItem(PROGRESS_KEY_LS, room);
+                setCookie(PROGRESS_KEY_COOKIE, room, 7); // Save cookie for 7 days
+                console.log(`Progress saved: Room ${room}`);
+            } catch (e) {
+                console.warn("Could not save progress (LocalStorage or Cookies might be disabled/full).", e);
+            }
+        }
+
+        function loadProgress() {
+            let savedRoom = null;
+            try {
+                savedRoom = localStorage.getItem(PROGRESS_KEY_LS);
+                if (savedRoom === null) { // If not in local storage, try cookie
+                    savedRoom = getCookie(PROGRESS_KEY_COOKIE);
+                }
+            } catch (e) {
+                console.warn("Could not load progress from LocalStorage, trying cookies.", e);
+                savedRoom = getCookie(PROGRESS_KEY_COOKIE); // Attempt to load from cookie if LS fails
+            }
+            
+            if (savedRoom !== null) {
+                const roomNum = parseInt(savedRoom);
+                if (roomNum >= MIN_ROOM && roomNum <= MAX_ROOM) {
+                    console.log(`Progress loaded: Room ${roomNum}`);
+                    return roomNum;
+                } else {
+                     console.warn(`Loaded room ${roomNum} is out of bounds. Resetting.`);
+                     clearProgress(); // Clear invalid stored progress
+                }
+            }
+            return null; // No valid progress found
+        }
         
+        function clearProgress() {
+            try {
+                localStorage.removeItem(PROGRESS_KEY_LS);
+                setCookie(PROGRESS_KEY_COOKIE, '', -1); // Delete cookie
+                console.log("Stored progress cleared.");
+            } catch (e) {
+                console.warn("Could not clear progress.", e);
+            }
+        }
+
+
         /**
          * Loads the PDF document from the specified PDF_PATH.
          * Initializes the viewer to the currentRoom.
@@ -294,15 +365,26 @@
             startExplorationBtn.disabled = true; 
             clearAllCanvases(); 
 
+            // Attempt to load saved room, otherwise use roomNumberInput value or default
+            const loadedRoom = loadProgress();
+            if (loadedRoom !== null) {
+                currentRoom = loadedRoom;
+                roomNumberInput.value = currentRoom;
+            } else {
+                currentRoom = parseInt(roomNumberInput.value) || currentRoom; // Use input or default
+            }
+
+
             const loadingTask = pdfjsLib.getDocument(PDF_PATH);
             loadingTask.promise.then(doc => {
                 pdfDoc = doc;
                 totalPdfPages = doc.numPages;
-                currentRoom = parseInt(roomNumberInput.value) || currentRoom; 
+                // currentRoom is already set from loadProgress or input value
                 roomNumberInput.value = currentRoom; 
                 renderCurrentRoomView(); 
                 enableControls(); 
                 loadingIndicator.style.display = 'none';
+                saveProgress(currentRoom); // Save initial/loaded room
             }).catch(err => {
                 console.error('Error loading PDF from path:', err);
                 errorIndicator.innerHTML = `Failed to load Maze from <code>${PDF_PATH}</code>. <br>Ensure the PDF is in the same directory as this HTML file, or check browser console for security errors (CORS). <br>Details: ${err.message}`;
@@ -314,8 +396,27 @@
             });
         }
 
-        startExplorationBtn.addEventListener('click', loadAndProcessPdf);
-        window.addEventListener('DOMContentLoaded', loadAndProcessPdf); 
+        // Load progress and PDF on initial load
+        window.addEventListener('DOMContentLoaded', () => {
+            const initialRoom = loadProgress();
+            if (initialRoom !== null) {
+                currentRoom = initialRoom;
+                roomNumberInput.value = currentRoom;
+            }
+            loadAndProcessPdf();
+        });
+        
+        startExplorationBtn.addEventListener('click', () => {
+            // Optionally clear progress if "Reload Maze" implies starting fresh for some users
+            // For now, it just reloads the PDF, potentially to a different room if input changed
+            // or defaults to saved progress if input is not changed.
+            // If you want "Reload Maze" to always reset to room 1:
+            // currentRoom = MIN_ROOM;
+            // roomNumberInput.value = MIN_ROOM;
+            // clearProgress(); // Then save new progress after load
+            loadAndProcessPdf();
+        });
+
 
         /**
          * Maps a room number to the PDF page number that should appear on the LEFT canvas.
@@ -347,6 +448,7 @@
                     renderPage(leftPageNum, leftCanvas, leftCtx, leftPageLabel, "Left"),
                     renderPage(rightPageNum, rightCanvas, rightCtx, rightPageLabel, "Right")
                 ]);
+                saveProgress(currentRoom); // Save after successful render
             } catch (err) {
                 console.error("Error rendering pages:", err);
                 errorIndicator.textContent = 'Error rendering pages. Some pages might be missing or invalid.';
@@ -454,7 +556,7 @@
             const targetRoom = parseInt(roomNumberInput.value);
             if (targetRoom >= MIN_ROOM && targetRoom <= MAX_ROOM) {
                 currentRoom = targetRoom;
-                renderCurrentRoomView();
+                renderCurrentRoomView(); // This will call saveProgress
             } else {
                 showThemedAlert(`Enter a passage number between ${MIN_ROOM} and ${MAX_ROOM}.`);
             }
@@ -464,7 +566,7 @@
             if (currentRoom > MIN_ROOM) {
                 currentRoom--;
                 roomNumberInput.value = currentRoom; 
-                renderCurrentRoomView();
+                renderCurrentRoomView(); // This will call saveProgress
             }
         });
 
@@ -472,7 +574,7 @@
             if (currentRoom < MAX_ROOM) {
                 currentRoom++;
                 roomNumberInput.value = currentRoom; 
-                renderCurrentRoomView();
+                renderCurrentRoomView(); // This will call saveProgress
             }
         });
         
