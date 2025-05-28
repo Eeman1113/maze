@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Maze</title>
+    <title>Interactive Maze PDF Viewer - Dungeon Edition</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js"></script>
     <style>
@@ -187,11 +187,11 @@
         <div id="pdfViewerContainer">
             <div class="canvas-wrapper" id="leftPageWrapper">
                 <canvas id="pdfCanvasLeft"></canvas>
-                <div class="page-label" id="leftPageLabel">Left Parchment</div>
+                <div class="page-label" id="leftPageLabel">Left Parchment (Text)</div>
             </div>
             <div class="canvas-wrapper" id="rightPageWrapper">
                 <canvas id="pdfCanvasRight"></canvas>
-                <div class="page-label" id="rightPageLabel">Right Parchment</div>
+                <div class="page-label" id="rightPageLabel">Right Parchment (Image)</div>
             </div>
         </div>
     </div>
@@ -211,12 +211,11 @@
 
         // --- Global variables ---
         let pdfDoc = null;
-        // MODIFIED: Initial currentRoom set to 2
-        let currentRoom = 2;
+        let currentRoom = 2; // Default starting room
         let totalPdfPages = 0;
         const MIN_ROOM = 1;
-        const MAX_ROOM = 45; // As per the book's contest rules
-        const PDF_PATH = './maze.pdf'; // Ensure 'maze.pdf' is in the same directory
+        const MAX_ROOM = 45; 
+        const PDF_PATH = './maze.pdf'; 
 
         // --- DOM Elements ---
         const startExplorationBtn = document.getElementById('startExplorationBtn');
@@ -237,8 +236,6 @@
 
         const loadingIndicator = document.getElementById('loadingIndicator');
         const errorIndicator = document.getElementById('errorIndicator');
-
-        // --- PDF Loading and Rendering ---
         
         /**
          * Loads the PDF document from the specified PDF_PATH.
@@ -247,53 +244,46 @@
         function loadAndProcessPdf() {
             errorIndicator.style.display = 'none';
             loadingIndicator.style.display = 'block';
-            startExplorationBtn.disabled = true; // Disable button while loading
-            clearAllCanvases(); // Clear previous content
+            startExplorationBtn.disabled = true; 
+            clearAllCanvases(); 
 
-            // Get the PDF document
             const loadingTask = pdfjsLib.getDocument(PDF_PATH);
             loadingTask.promise.then(doc => {
                 pdfDoc = doc;
                 totalPdfPages = doc.numPages;
-                
-                // Ensure currentRoom is within valid PDF page range after mapping
-                // currentRoom is already set to 2 (or its latest value)
-                roomNumberInput.value = currentRoom; // Sync input field
-
-                updateRoomInfo(); // Update display with current room
-                renderCurrentRoomView(); // Render the pages for the current room
-                enableControls(); // Enable navigation buttons
+                roomNumberInput.value = currentRoom; 
+                updateRoomInfo(); 
+                renderCurrentRoomView(); 
+                enableControls(); 
                 loadingIndicator.style.display = 'none';
             }).catch(err => {
                 console.error('Error loading PDF from path:', err);
                 errorIndicator.innerHTML = `Failed to load Maze from <code>${PDF_PATH}</code>. <br>Ensure the PDF is in the same directory as this HTML file, or check browser console for security errors (CORS). <br>Details: ${err.message}`;
                 errorIndicator.style.display = 'block';
                 loadingIndicator.style.display = 'none';
-                disableControls(); // Keep controls disabled on error
-                startExplorationBtn.disabled = false; // Re-enable button to allow retry
-                pdfDoc = null; // Reset pdfDoc
+                disableControls(); 
+                startExplorationBtn.disabled = false; 
+                pdfDoc = null; 
             });
         }
 
-        // Event listener for the "Reload Maze" button
         startExplorationBtn.addEventListener('click', loadAndProcessPdf);
-
-        // MODIFIED: Load PDF automatically when the DOM is fully parsed and ready
         window.addEventListener('DOMContentLoaded', loadAndProcessPdf); 
 
         /**
-         * Maps a room number to its corresponding starting PDF page number.
+         * Maps a room number to its corresponding starting PDF page number (for the text page).
          * @param {number} roomNum - The room number.
-         * @returns {number} The PDF page number for the left page of the room.
+         * @returns {number} The PDF page number for the left page (text) of the room.
          */
         function mapRoomToPage(roomNum) {
-            // Based on observation: Room R image is on PDF page (2*R + 7)
-            // Example: Room 1 -> 2*1+7 = 9. Room 45 -> 2*45+7 = 97.
-            return (2 * parseInt(roomNum)) + 7;
+            // MODIFIED: Room R text is on PDF page (2*R + 5)
+            // Example: Room 1 text -> (2*1)+5 = 7. Image on page 8.
+            // Room 2 text -> (2*2)+5 = 9. Image on page 10.
+            return (2 * parseInt(roomNum)) + 5;
         }
 
         /**
-         * Renders the left and right pages for the current room.
+         * Renders the left (text) and right (image) pages for the current room.
          */
         async function renderCurrentRoomView() {
             if (!pdfDoc) {
@@ -302,17 +292,18 @@
             }
             loadingIndicator.style.display = 'block';
 
-            const leftPageNum = mapRoomToPage(currentRoom);
-            const rightPageNum = leftPageNum + 1;
+            // The left page is the text page for the current room
+            const textPageNum = mapRoomToPage(currentRoom);
+            // The right page is the image page, immediately following the text page
+            const imagePageNum = textPageNum + 1;
 
-            updateRoomInfo(leftPageNum, rightPageNum); // Update display
-            validateRoomButtons(); // Enable/disable prev/next based on current room
+            updateRoomInfo(textPageNum, imagePageNum); 
+            validateRoomButtons(); 
             
             try {
-                // Render both pages concurrently
                 await Promise.all([
-                    renderPage(leftPageNum, leftCanvas, leftCtx, leftPageLabel),
-                    renderPage(rightPageNum, rightCanvas, rightCtx, rightPageLabel)
+                    renderPage(textPageNum, leftCanvas, leftCtx, leftPageLabel, "Text"),
+                    renderPage(imagePageNum, rightCanvas, rightCtx, rightPageLabel, "Image")
                 ]);
             } catch (err) {
                 console.error("Error rendering pages:", err);
@@ -329,28 +320,23 @@
          * @param {HTMLCanvasElement} canvas - The canvas element to render on.
          * @param {CanvasRenderingContext2D} ctx - The 2D rendering context of the canvas.
          * @param {HTMLElement} labelElement - The HTML element to display the page number/label.
+         * @param {string} pageType - "Text" or "Image" to update label.
          */
-        async function renderPage(pageNum, canvas, ctx, labelElement) {
+        async function renderPage(pageNum, canvas, ctx, labelElement, pageType) {
             const wrapper = canvas.parentElement;
-            // Ensure canvas has a base size for calculations if not yet rendered or if wrapper is not yet sized
             if (canvas.width === 0 || canvas.height === 0) {
                  if (wrapper && wrapper.clientWidth > 0) {
-                    // Set canvas drawing buffer size based on its CSS displayed size
                     canvas.width = wrapper.clientWidth; 
-                    canvas.height = canvas.width * 1.414; // Approximate A4 aspect ratio
+                    canvas.height = canvas.width * 1.414; 
                 } else { 
-                    // Fallback size if wrapper has no width (e.g., display:none)
                     canvas.width = 400;
                     canvas.height = 565;
                 }
             }
 
-            // Handle cases where the page number is out of bounds
             if (pageNum <= 0 || pageNum > totalPdfPages) {
                 ctx.clearRect(0, 0, canvas.width, canvas.height); 
-                labelElement.textContent = `Page ${pageNum} (Beyond the Veil)`;
-                
-                // Style for empty/invalid page
+                labelElement.textContent = `${pageType} Page ${pageNum} (Beyond the Veil)`;
                 ctx.fillStyle = "#1a1a1a"; 
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 ctx.fillStyle = "#777";
@@ -362,42 +348,31 @@
 
             try {
                 const page = await pdfDoc.getPage(pageNum);
-                                
-                // Determine the desired width for rendering (e.g., width of the wrapper)
-                let desiredWidth = 600; // Default desired width
+                let desiredWidth = 600; 
                 if (wrapper && wrapper.clientWidth > 0) {
-                    // Subtract padding if any, to fit content within wrapper
                     desiredWidth = wrapper.clientWidth - (parseInt(getComputedStyle(wrapper).paddingLeft) || 0) - (parseInt(getComputedStyle(wrapper).paddingRight) || 0);
                 } else if (canvas.clientWidth > 0) { 
                      desiredWidth = canvas.clientWidth;
                 }
 
-
                 const viewportInitial = page.getViewport({ scale: 1.0 });
                 const scale = desiredWidth / viewportInitial.width;
                 const viewport = page.getViewport({ scale: scale });
 
-                // Set canvas dimensions to match the PDF page's scaled size
                 canvas.height = viewport.height;
                 canvas.width = viewport.width;
                 
-                // Also set the CSS size if you want to constrain display (optional, usually handled by wrapper)
-                // canvas.style.height = viewport.height + 'px';
-                // canvas.style.width = viewport.width + 'px';
-
                 const renderContext = {
                     canvasContext: ctx,
                     viewport: viewport
                 };
                 await page.render(renderContext).promise;
-                labelElement.textContent = `Scroll ${pageNum}`;
+                labelElement.textContent = `Scroll ${pageNum} (${pageType})`;
             } catch (error) {
-                console.error(`Error rendering page ${pageNum}:`, error);
+                console.error(`Error rendering page ${pageNum} (${pageType}):`, error);
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
-                labelElement.textContent = `Corrupted Scroll ${pageNum}`;
-                
-                // Style for error rendering page
-                ctx.fillStyle = "#4a1e1a"; // Dark red error background
+                labelElement.textContent = `Corrupted Scroll ${pageNum} (${pageType})`;
+                ctx.fillStyle = "#4a1e1a"; 
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 ctx.fillStyle = "#c5c5c5";
                 ctx.font = "bold 18px 'Georgia', serif";
@@ -406,10 +381,6 @@
             }
         }
         
-        /**
-         * Clears all canvases and resets their labels and info displays.
-         * Sets a default background on the canvases.
-         */
         function clearAllCanvases() {
             const canvases = [leftCanvas, rightCanvas];
             const contexts = [leftCtx, rightCtx];
@@ -417,7 +388,6 @@
             canvases.forEach((canvas, index) => {
                 const ctx = contexts[index];
                 const wrapper = canvas.parentElement;
-                // Set a default size for drawing buffer, will be adjusted by renderPage
                  if (wrapper && wrapper.clientWidth > 0) {
                     canvas.width = wrapper.clientWidth; 
                     canvas.height = canvas.width * 1.414; 
@@ -425,25 +395,22 @@
                     canvas.width = 400;
                     canvas.height = 565;
                 }
-                ctx.fillStyle = "#1a1a1a"; // Dark background matching body
+                ctx.fillStyle = "#1a1a1a"; 
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
             });
             
-            leftPageLabel.textContent = "Left Parchment";
-            rightPageLabel.textContent = "Right Parchment";
+            leftPageLabel.textContent = "Left Parchment (Text)";
+            rightPageLabel.textContent = "Right Parchment (Image)";
             currentRoomDisplay.textContent = "-";
             currentPageDisplay.textContent = "-";
         }
 
-
-        // --- Navigation Controls Event Listeners ---
         goToRoomBtn.addEventListener('click', () => {
             const targetRoom = parseInt(roomNumberInput.value);
             if (targetRoom >= MIN_ROOM && targetRoom <= MAX_ROOM) {
                 currentRoom = targetRoom;
                 renderCurrentRoomView();
             } else {
-                // Replace with a custom modal in a real app for better theming
                 showThemedAlert(`Enter a passage number between ${MIN_ROOM} and ${MAX_ROOM}.`);
             }
         });
@@ -451,7 +418,7 @@
         prevRoomBtn.addEventListener('click', () => {
             if (currentRoom > MIN_ROOM) {
                 currentRoom--;
-                roomNumberInput.value = currentRoom; // Sync input field
+                roomNumberInput.value = currentRoom; 
                 renderCurrentRoomView();
             }
         });
@@ -459,41 +426,26 @@
         nextRoomBtn.addEventListener('click', () => {
             if (currentRoom < MAX_ROOM) {
                 currentRoom++;
-                roomNumberInput.value = currentRoom; // Sync input field
+                roomNumberInput.value = currentRoom; 
                 renderCurrentRoomView();
             }
         });
         
-        /**
-         * Updates the room and PDF page number information display.
-         * @param {number} [leftPdfPageNum] - The PDF page number for the left canvas.
-         * @param {number} [rightPdfPageNum] - The PDF page number for the right canvas.
-         */
-        function updateRoomInfo(leftPdfPageNum, rightPdfPageNum) {
+        function updateRoomInfo(textPageNum, imagePageNum) {
             currentRoomDisplay.textContent = currentRoom;
-            if (leftPdfPageNum && rightPdfPageNum) {
-                 currentPageDisplay.textContent = `${leftPdfPageNum} & ${rightPdfPageNum}`;
-            } else if (leftPdfPageNum) { // Should not happen with current two-page logic
-                 currentPageDisplay.textContent = `${leftPdfPageNum}`;
-            }
-             else { // Before PDF is loaded or if pages are invalid
+            if (textPageNum && imagePageNum) {
+                 currentPageDisplay.textContent = `Text: ${textPageNum}, Image: ${imagePageNum}`;
+            } else { 
                  currentPageDisplay.textContent = "-";
             }
         }
 
-        /**
-         * Enables navigation controls.
-         */
         function enableControls() {
             goToRoomBtn.disabled = false;
-            // prevRoomBtn and nextRoomBtn state managed by validateRoomButtons
             roomNumberInput.disabled = false;
             validateRoomButtons(); 
         }
 
-        /**
-         * Disables all navigation controls.
-         */
         function disableControls() {
             goToRoomBtn.disabled = true;
             prevRoomBtn.disabled = true;
@@ -501,50 +453,34 @@
             roomNumberInput.disabled = true;
         }
         
-        /**
-         * Validates and sets the disabled state of previous/next room buttons
-         * based on the current room and PDF document availability.
-         */
         function validateRoomButtons() {
-            if (!pdfDoc) { // If PDF isn't loaded, all nav controls should be disabled
+            if (!pdfDoc) { 
                 disableControls(); 
-                startExplorationBtn.disabled = false; // Keep reload button enabled
+                startExplorationBtn.disabled = false; 
                 return;
             }
-            // Enable/disable prev/next buttons based on current room boundaries
             prevRoomBtn.disabled = (currentRoom <= MIN_ROOM);
             nextRoomBtn.disabled = (currentRoom >= MAX_ROOM);
         }
         
-        /**
-         * Shows a simple themed alert. 
-         * For a real application, replace this with a custom styled modal dialog.
-         * @param {string} message - The message to display.
-         */
         function showThemedAlert(message) {
-            // Placeholder: Using browser's default alert.
-            // In a production app, you'd create a custom HTML modal for theming.
             alert("Hark, adventurer!\n\n" + message);
         }
 
+        disableControls(); 
+        startExplorationBtn.disabled = false; 
 
-        // --- Initial State & Resize Handling ---
-        disableControls(); // Controls are disabled until PDF is loaded successfully
-        startExplorationBtn.disabled = false; // "Reload Maze" button is initially enabled
-
-        // Debounced resize handler to re-render pages for optimal quality
         let resizeTimeout;
         window.addEventListener('resize', () => {
             clearTimeout(resizeTimeout);
             resizeTimeout = setTimeout(() => {
-                if (pdfDoc) { // Only re-render if PDF is loaded
+                if (pdfDoc) { 
                     console.log("Window resized, re-rendering current room view.");
                     renderCurrentRoomView(); 
                 }
-            }, 250); // Debounce timeout of 250ms
+            }, 250); 
         });
         
-        // Initialize empty canvases with background on load (before PDF is processed)
         clearAllCanvases();
 
     </script>
